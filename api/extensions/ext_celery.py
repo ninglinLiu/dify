@@ -138,6 +138,8 @@ def init_app(app: DifyApp) -> Celery:
         result_backend=dify_config.CELERY_RESULT_BACKEND,
         broker_transport_options=broker_transport_options,
         broker_connection_retry_on_startup=True,
+        broker_connection_retry=True,
+        broker_connection_max_retries=None,
         worker_log_format=dify_config.LOG_FORMAT,
         worker_task_log_format=dify_config.LOG_FORMAT,
         worker_hijack_root_logger=False,
