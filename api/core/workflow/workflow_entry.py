@@ -276,6 +276,7 @@ class WorkflowEntry:
             node_type=node_type,
             node_data=node_config_data,
             variable_mapping=variable_mapping,
+            workflow_type=workflow.type.value,
         )
 
         # Loading missing variable from draft var here, and set it into
@@ -433,6 +434,7 @@ class WorkflowEntry:
                 node_type=node_type,
                 node_data=node_data,
                 variable_mapping=variable_mapping,
+                workflow_type=None,
             )
 
             cls.mapping_user_inputs_to_variable_pool(

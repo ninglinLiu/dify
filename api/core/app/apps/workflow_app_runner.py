@@ -426,6 +426,7 @@ class WorkflowBasedAppRunner:
             node_type=node_type,
             node_data=target_node_config.data,
             variable_mapping=variable_mapping,
+            workflow_type=workflow.type.value,
         )
 
         load_into_variable_pool(

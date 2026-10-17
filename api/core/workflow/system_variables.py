@@ -215,10 +215,21 @@ def inject_default_system_variable_mappings(
     node_type: str,
     node_data: object,
     variable_mapping: Mapping[str, Sequence[str]],
+    workflow_type: str | None = None,
 ) -> Mapping[str, Sequence[str]]:
-    """Add workflow-owned implicit sys mappings that `graphon` should not know about."""
+    """Add workflow-owned implicit sys mappings that `graphon` should not know about.
+    
+    For Workflow (non-chat) apps, sys.query is not available and should not be required.
+    Only inject the query mapping for Chat workflow types when memory is configured.
+    """
 
     if node_type != BuiltinNodeTypes.LLM or getattr(node_data, "memory", None) is None:
+        return variable_mapping
+
+    # For Workflow apps, do not inject sys.query mapping since it's not available
+    # Only inject for Chat workflow types (chat, advanced-chat, etc.)
+    from models.workflow import WorkflowType
+    if workflow_type == WorkflowType.WORKFLOW.value:
         return variable_mapping
 
     query_mapping_key = f"{node_id}.#sys.query#"

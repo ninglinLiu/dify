@@ -545,3 +545,141 @@ class TestWorkflowEntry:
         process_data = variable_pool.get(["process", "data"])
         assert process_data is not None
         assert process_data.value == {"value": 123, "status": "active"}
+
+    def test_workflow_llm_with_memory_single_step_run(self):
+        """Test that Workflow app LLM nodes with memory don't require sys.query.
+        
+        Regression test for #43769: Workflow (non-chat) LLM node with memory should
+        not fail single-step run due to missing sys.query in user inputs.
+        """
+        # Arrange: Create a Workflow app with LLM node that has memory configured
+        node_id = "llm_node"
+        node_data = {
+            "type": "llm",
+            "title": "LLM",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-3.5-turbo",
+                "mode": "chat",
+                "completion_params": {"temperature": 0.7},
+            },
+            "prompt_template": [
+                {"role": "system", "text": "Say hello"},
+            ],
+            "context": {
+                "enabled": False,
+                "variable_selector": [],
+            },
+            "memory": {
+                "window": {
+                    "enabled": False,
+                    "size": 10,
+                }
+            },
+        }
+        node_config = {"id": node_id, "data": node_data}
+
+        workflow = Workflow.new(
+            tenant_id="tenant",
+            app_id="app",
+            type=WorkflowType.WORKFLOW,  # Workflow app, not Chat
+            version=Workflow.VERSION_DRAFT,
+            graph=json.dumps({"nodes": [node_config], "edges": []}),
+            features="{}",
+            created_by="account",
+            environment_variables=[],
+            conversation_variables=[],
+            rag_pipeline_variables=[],
+        )
+        workflow.id = "workflow"
+        
+        variable_pool = VariablePool.from_bootstrap(
+            system_variables=default_system_variables(),
+            user_inputs={},
+        )
+
+        # Act: Call single_step_run WITHOUT sys.query in user_inputs
+        # This should NOT raise "Variable key llm_node.#sys.query# not found in user inputs"
+        # We expect it to fail later at plugin execution, which proves the variable mapping worked
+        try:
+            node, _ = WorkflowEntry.single_step_run(
+                workflow=workflow,
+                node_id=node_id,
+                user_id="user",
+                user_inputs={},  # Empty inputs - no sys.query provided
+                variable_pool=variable_pool,
+            )
+            # If we get here, the variable mapping worked (no ValueError about missing sys.query)
+            assert node is not None
+            assert node.id == node_id
+        except ValueError as e:
+            # The fix should prevent the ValueError about missing sys.query
+            if "#sys.query#" in str(e):
+                pytest.fail(f"Workflow LLM with memory should not require sys.query: {e}")
+            # Other ValueErrors are OK (e.g., plugin connection issues)
+            pass
+        except Exception:
+            # Other exceptions (like plugin connection errors) are OK for this test
+            # We only care that we didn't get ValueError about missing sys.query
+            pass
+
+    def test_chat_llm_with_memory_requires_sys_query(self):
+        """Test that Chat app LLM nodes with memory still require sys.query.
+        
+        Ensures the fix for #43769 doesn't break chat mode behavior.
+        """
+        # Arrange: Create a Chat app with LLM node that has memory configured
+        node_id = "llm_node"
+        node_data = {
+            "type": "llm",
+            "title": "LLM",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-3.5-turbo",
+                "mode": "chat",
+                "completion_params": {"temperature": 0.7},
+            },
+            "prompt_template": [
+                {"role": "system", "text": "Say hello"},
+            ],
+            "context": {
+                "enabled": False,
+                "variable_selector": [],
+            },
+            "memory": {
+                "window": {
+                    "enabled": False,
+                    "size": 10,
+                }
+            },
+        }
+        node_config = {"id": node_id, "data": node_data}
+
+        workflow = Workflow.new(
+            tenant_id="tenant",
+            app_id="app",
+            type=WorkflowType.CHAT,  # Chat app
+            version=Workflow.VERSION_DRAFT,
+            graph=json.dumps({"nodes": [node_config], "edges": []}),
+            features="{}",
+            created_by="account",
+            environment_variables=[],
+            conversation_variables=[],
+            rag_pipeline_variables=[],
+        )
+        workflow.id = "workflow"
+        
+        variable_pool = VariablePool.from_bootstrap(
+            system_variables=default_system_variables(),
+            user_inputs={},
+        )
+
+        # Act & Assert: Call single_step_run without sys.query should fail for Chat apps
+        with pytest.raises(ValueError, match="Variable key llm_node.#sys.query# not found in user inputs"):
+            WorkflowEntry.single_step_run(
+                workflow=workflow,
+                node_id=node_id,
+                user_id="user",
+                user_inputs={},  # Empty inputs - no sys.query provided
+                variable_pool=variable_pool,
+            )
